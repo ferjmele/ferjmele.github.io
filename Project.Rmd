@@ -1,0 +1,105 @@
+---
+output: html_document
+---
+
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(ggplot2)
+library(rmarkdown)
+library(caret)
+library(randomForest)
+rm(list=ls(all=TRUE))
+```
+
+# Predictive model for Human activity recognition on weight lifting exercises
+
+by ferjmele, for JHU Coursera Practical Machine Learning Course final Project
+______________________________________________________________________________________________________
+
+## Executive Summary
+
+The purpose of this project is to define a predictive model that helps to classify how well an individual executes a weight lifting exercise, using different predictors. The work is based on a public dataset that was collected by measuring those parameters (predictors) from some individuals while classifying how they were actually executing. 
+
+This report contains a section dedicated to explain how data was obtained and transformed, followed by an explanation of how the predictive model was chosen. Finally, predictions were obtained for the testing dataset. 
+
+## Getting and transforming data
+
+Getting data:
+
+First, data was obtained setting NA values where parameters appear to be missing or mistaken:
+
+``` {r getdata}
+##data was previously downloaded to avoid downloading on every execution
+##url origin train data "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+##url origin test data "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv("pml-training.csv", na.strings=c("NA","#DIV/0!",""," "))
+testing <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""," "))
+```
+
+Training dataset has `r dim(training)[1]` observations while testing has `r dim(testing)[1]`, both have `r dim(training)[2]` variables. "Classe" is the variable to predict.
+
+
+Data Transformation:
+
+As the out of sample error is to be estimated and there are enough training observations, training data is sub-split for cross validation.
+
+Transformation includes 3 steps: removing variables that do not make sense to estimate how well exercise is being execute (first five variables), removing variables that have near zero variance and variables that have large amount of NAs (more than 80%)
+
+``` {r transformdata}
+training_t<-training[,-(1:5)]
+trainvars<-nearZeroVar(training_t)
+training_t<-training_t[,-trainvars]
+keep<-c(rep(0,ncol(training_t)))
+thresh<-nrow(training_t)*0.8
+for (i in 1:ncol(training_t)) {
+  if (sum(is.na(training_t[,i]))<=thresh) {keep[i]<-i}
+}
+keep<-keep[keep!=0]
+training_t<-training_t[,keep]
+set.seed(900)
+intrain<-createDataPartition(training_t$classe,p=0.7,list=FALSE)
+train1<-training_t[intrain,]
+train2<-training_t[-intrain,]
+rm(training) ##to free memory
+rm(training_t)
+```
+
+Two sets are obtained, one with `r dim(train1)[1]` observations and the second with `r dim(train2)[1]` observations. Both have `r dim(train1)[2]` variables, including Classe.
+
+## Model Selection
+
+As the outcome is a factor of only five levels and there are a considerable amount of predictors, Random Forest is selected.
+
+``` {r modelbuild}
+modfit<-train(classe~.,method="rf",data=train1, trControl=trainControl(number=2)) ##number=2 is added to limit overfitting and to avoid excessive need of computational capacity
+modfit
+```
+
+To first evaluate the model, prediction with second split of training data is made:
+
+``` {r traintest}
+pred2<-predict(modfit,train2)
+confusionMatrix(pred2,train2$classe)
+```
+
+Model seems to be working fine. Expected accuracy is near 100%.
+
+## Prediction
+
+To use model in testing set, same transformations should be done first
+``` {r pred}
+testing_t<-testing[,-(1:5)]
+testing_t<-testing_t[,-trainvars]
+testing_t<-testing_t[,keep]
+pred_test<-predict(modfit,testing_t)
+testing_t<-data.frame(testing_t,pred_test)
+print(testing_t$pred_test)
+```
+
+##Notes
+
+Data was obtained from WLE dataset:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
